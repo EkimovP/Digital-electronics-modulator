@@ -80,58 +80,76 @@ class CostasLoop:
 
 # --------------------------------------------------------------------------------------------
 
-# Генерация FM-2 сигнала с шумом и доплеровским сдвигом
-np.random.seed(0)
-
 # Параметры сигнала
-Fs = 500  # Частота дискретизации
-Fc = 10  # Частота несущей
-Fdev = 15  # Максимальное девиация частоты
-Beta = Fdev / Fc  # Коэффициент модуляции
+duration = 1  # Длительность сигнала в секундах
+fs = 500  # Частота дискретизации в Гц
+f_carrier = 20  # Частота несущей синусоиды в Гц
+bit_rate = 25  # Скорость передачи битов в битах в секунду (число бит в периоде)
 
-t = np.linspace(0, 1, Fs)  # Временная ось
+# Генерируем последовательность битов (для примера)
+bits = np.random.randint(0, 2, int(bit_rate * duration))
 
-# FM-2 модуляция синусоиды
-modulated_signal = np.sin(2 * np.pi * Fc * t + Beta * np.sin(2 * np.pi * 2 * t))
+# Генерируем временную ось
+t = np.linspace(0, duration, int(fs * duration), endpoint=False)
 
-# Добавление шума
+# Генерируем несущую синусоиду
+carrier_wave = np.sin(2 * np.pi * f_carrier * t)
+
+# Генерируем модулированный сигнал
+modulated_signal = np.zeros_like(carrier_wave)
+
+bit_period_samples = int(fs / bit_rate)  # Число сэмплов в одном периоде бита
+
+for i, bit in enumerate(bits):
+    phase_shift = np.pi if bit == 1 else 0  # Фазовый сдвиг на 180 градусов при бите 1
+    modulated_signal[i * bit_period_samples : (i + 1) * bit_period_samples] = np.sin(
+        2 * np.pi * f_carrier * t[i * bit_period_samples : (i + 1) * bit_period_samples]
+        + phase_shift
+    )
+
+# Добавляем шум
 SNR_dB = 10  # Отношение сигнал/шум в децибелах
-noise_power = 10 ** (-SNR_dB / 10)
-noise = np.random.normal(0, np.sqrt(noise_power), len(t))
+signal_power = np.sum(modulated_signal**2) / len(modulated_signal)
+noise_power = signal_power / (10 ** (SNR_dB / 10))
+noise = np.random.normal(0, np.sqrt(noise_power), modulated_signal.shape)
 noisy_signal = modulated_signal + noise
 
-# Доплеровский сдвиг
-doppler_factor = 0.1
-doppler_shift = np.exp(1j * 2 * np.pi * doppler_factor * t)
-received_signal = noisy_signal * doppler_shift
+# Моделируем эффект доплеровского сдвига
+doppler_factor = 2.0  # Коэффициент доплеровского сдвига
+doppler_shift = np.cos(
+    2 * np.pi * doppler_factor * t
+)  # Модулирующая функция для доплеровского сдвига
+doppler_signal = noisy_signal * doppler_shift
+
+received_signal = doppler_signal
 
 # Инициализация и применение петли Костаса
 costas_loop = CostasLoop()
-output_bits = costas_loop.run(received_signal, Fs, Fc)
+output_bits = costas_loop.run(received_signal, fs, f_carrier)
 
 # Визуализация результатов
 plt.figure(figsize=(12, 6))
 
 plt.subplot(3, 1, 1)
-plt.plot(t, modulated_signal, label="Modulated Signal")
-plt.title("FM-2 Modulated Signal")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
+plt.plot(t, modulated_signal, label="Синусоида с BPSK")
+plt.title("Сигнал исходный без шума и доплеровского сдвига")
+plt.xlabel("Время")
+plt.ylabel("Амплитуда")
 plt.legend()
 
 plt.subplot(3, 1, 2)
-plt.plot(t, noisy_signal, label="Noisy Signal")
-plt.title("Noisy FM-2 Signal with Doppler Shift")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
+plt.plot(t, received_signal, label="Сигнал")
+plt.title("Синусоида с шумом и доплеровским сдвигом")
+plt.xlabel("Время")
+plt.ylabel("Амплитуда")
 plt.legend()
 
 plt.subplot(3, 1, 3)
-plt.plot(t, np.array(output_bits) - 1, label="Output Bits (Recovered)")
-plt.title("Recovered Bits using Costas Loop")
-plt.xlabel("Time")
-plt.ylabel("Bit Value")
-plt.yticks([0, 1], ["0", "1"])
+plt.plot(t, np.array(output_bits) - 1, label="Биты")
+plt.title("Последовательность битов")
+plt.xlabel("Время")
+plt.ylabel("Биты")
+plt.yticks([0], ["1"])
 plt.legend()
 print(output_bits)
 

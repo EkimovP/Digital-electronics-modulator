@@ -37,7 +37,6 @@ class Modulator:
         phase_diff = np.unwrap(
             phase_diff
         )  # Развертка фазы для устранения перепадов на 2*pi
-        clock_rate = np.mean(phase_diff) / (2 * np.pi) * self.sampling_rate
 
         # Восстановление тактовой частоты путем интерполяции фазовых различий
         interpolated_clock = np.interp(
@@ -61,32 +60,82 @@ class Modulator:
 
 # Пример использования модулятора:
 if __name__ == "__main__":
-    # Параметры сигнала и модулятора
-    carrier_freq = 10  # несущая частота (Гц)
-    sampling_rate = 500  # частота дискретизации (Гц)
-    duration = 1.0  # длительность сигнала в секундах
+    # Параметры сигнала
+    duration = 1  # Длительность сигнала в секундах
+    fs = 500  # Частота дискретизации в Гц
+    f_carrier = 20  # Частота несущей синусоиды в Гц
+    bit_rate = 25  # Скорость передачи битов в битах в секунду (число бит в периоде)
 
-    # Создание FM-2 модулированной синусоиды с шумом и эффектом доплера
-    np.random.seed(0)
-    t = np.linspace(0, duration, int(duration * sampling_rate), endpoint=False)
+    # Генерируем последовательность битов (для примера)
+    bits = np.random.randint(0, 2, int(bit_rate * duration))
 
-    fm_deviation = 5  # размах частотной модуляции
-    modulation_freq = 10  # частота модуляции
-    carrier_signal = np.sin(
-        2 * np.pi * carrier_freq * t
-        + fm_deviation * np.sin(2 * np.pi * modulation_freq * t)
-    )
+    # Генерируем временную ось
+    t = np.linspace(0, duration, int(fs * duration), endpoint=False)
 
-    # Добавление шума
-    noise_power = 0.01 * np.var(
-        carrier_signal
-    )  # мощность шума (10% от дисперсии сигнала)
-    noisy_signal = carrier_signal + np.random.normal(
-        scale=np.sqrt(noise_power), size=len(carrier_signal)
-    )
+    # Генерируем несущую синусоиду
+    carrier_wave = np.sin(2 * np.pi * f_carrier * t)
+
+    # Генерируем модулированный сигнал
+    modulated_signal = np.zeros_like(carrier_wave)
+
+    bit_period_samples = int(fs / bit_rate)  # Число сэмплов в одном периоде бита
+
+    for i, bit in enumerate(bits):
+        phase_shift = (
+            np.pi if bit == 1 else 0
+        )  # Фазовый сдвиг на 180 градусов при бите 1
+        modulated_signal[i * bit_period_samples : (i + 1) * bit_period_samples] = (
+            np.sin(
+                2
+                * np.pi
+                * f_carrier
+                * t[i * bit_period_samples : (i + 1) * bit_period_samples]
+                + phase_shift
+            )
+        )
+
+    # Добавляем шум
+    SNR_dB = 10  # Отношение сигнал/шум в децибелах
+    signal_power = np.sum(modulated_signal**2) / len(modulated_signal)
+    noise_power = signal_power / (10 ** (SNR_dB / 10))
+    noise = np.random.normal(0, np.sqrt(noise_power), modulated_signal.shape)
+    noisy_signal = modulated_signal + noise
+
+    # Моделируем эффект доплеровского сдвига
+    doppler_factor = 2.0  # Коэффициент доплеровского сдвига
+    doppler_shift = np.cos(
+        2 * np.pi * doppler_factor * t
+    )  # Модулирующая функция для доплеровского сдвига
+    doppler_signal = noisy_signal * doppler_shift
+
+    # # Параметры сигнала и модулятора
+    # carrier_freq = 10  # несущая частота (Гц)
+    # sampling_rate = 500  # частота дискретизации (Гц)
+    # duration = 1.0  # длительность сигнала в секундах
+
+    # # Создание FM-2 модулированной синусоиды с шумом и эффектом доплера
+    # np.random.seed(0)
+    # t = np.linspace(0, duration, int(duration * sampling_rate), endpoint=False)
+
+    # fm_deviation = 5  # размах частотной модуляции
+    # modulation_freq = 10  # частота модуляции
+    # carrier_signal = np.sin(
+    #     2 * np.pi * carrier_freq * t
+    #     + fm_deviation * np.sin(2 * np.pi * modulation_freq * t)
+    # )
+
+    # # Добавление шума
+    # noise_power = 0.01 * np.var(
+    #     carrier_signal
+    # )  # мощность шума (10% от дисперсии сигнала)
+    # noisy_signal = carrier_signal + np.random.normal(
+    #     scale=np.sqrt(noise_power), size=len(carrier_signal)
+    # )
+
+    noisy_signal = doppler_signal
 
     # Создание экземпляра модулятора
-    modulator = Modulator(noisy_signal, carrier_freq, sampling_rate)
+    modulator = Modulator(noisy_signal, f_carrier, fs)
 
     # Извлечение бинарных данных из зашумленного сигнала
     binary_data_output = modulator.modulate()
@@ -95,25 +144,25 @@ if __name__ == "__main__":
     plt.figure(figsize=(12, 8))
 
     plt.subplot(3, 1, 1)
-    plt.plot(t, carrier_signal, label="FM-2 Signal")
-    plt.title("FM-2 Modulated Signal")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
+    plt.plot(t, modulated_signal, label="Синусоида с BPSK")
+    plt.title("Сигнал исходный без шума и доплеровского сдвига")
+    plt.xlabel("Время")
+    plt.ylabel("Амплитуда")
     plt.legend()
 
     plt.subplot(3, 1, 2)
-    plt.plot(t, noisy_signal, label="Noisy FM-2 Signal")
-    plt.title("FM-2 Signal with Noise")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
+    plt.plot(t, noisy_signal, label="Сигнал")
+    plt.title("Синусоида с шумом и доплеровским сдвигом")
+    plt.xlabel("Время")
+    plt.ylabel("Амплитуда")
     plt.legend()
 
     plt.subplot(3, 1, 3)
-    plt.plot(t, binary_data_output.real, label="Binary Data Output")
-    plt.title("Extracted Binary Data")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
-    plt.ylim([-1.2, 1.2])
+    plt.plot(t, binary_data_output.real, label="Биты")
+    plt.title("Последовательность битов")
+    plt.xlabel("Время")
+    plt.ylabel("Биты")
+    plt.ylim([0, 1.1])
     plt.legend()
     print(binary_data_output.real)
 
