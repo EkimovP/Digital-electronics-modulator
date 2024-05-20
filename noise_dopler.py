@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 # Параметры сигнала
 fs = 100  # Частота дискретизации
 Tb = 1  # Длительность одного бита
-f0 = 5  # Частота несущей
+f0 = 10  # Частота несущей
 N = 25  # Число битов в сообщении
-doppler_shift = 0  # Доплеровский сдвиг
+doppler_shift = 2  # Доплеровский сдвиг
 snr = 10  # Отношение сигнал/шум (в дБ)
 
 # Генерация случайной битовой последовательности
@@ -26,23 +26,9 @@ noise_power = signal_power / (10 ** (snr / 10))
 noise = np.sqrt(noise_power) * np.random.normal(size=modulated_signal.shape)
 noisy_signal = modulated_signal + noise
 
-# Инициализация переменных для схемы Костаса
-phase_estimate = 0
-freq_estimate = f0
-loop_filter = 0
-Kp = 0.1  # Пропорциональный коэффициент
-Ki = 0.01  # Интегральный коэффициент
-
-# Демодуляция ФМ-2 сигнала с использованием схемы Костаса
-I = np.zeros_like(noisy_signal)
-Q = np.zeros_like(noisy_signal)
-for i in range(1, len(t)):
-    I[i] = noisy_signal[i] * np.cos(2 * np.pi * freq_estimate * t[i] + phase_estimate)
-    Q[i] = noisy_signal[i] * np.sin(2 * np.pi * freq_estimate * t[i] + phase_estimate)
-    error = I[i] * Q[i]
-    loop_filter += Ki * error
-    phase_estimate += Kp * error + loop_filter
-    freq_estimate = f0 + doppler_shift
+# Демодуляция ФМ-2 сигнала
+I = np.cos(2 * np.pi * (f0 + doppler_shift) * t) * noisy_signal
+Q = np.sin(2 * np.pi * (f0 + doppler_shift) * t) * noisy_signal
 
 # Применение фильтра низких частот
 I_filt = np.convolve(I, np.ones(fs * Tb) / fs * Tb, mode="same")
@@ -70,8 +56,8 @@ plt.ylabel("Амплитуда")
 
 # I и Q компоненты
 plt.subplot(4, 1, 3)
-plt.plot(t, I, label="I компонент")
-plt.plot(t, Q, label="Q компонент")
+plt.plot(t, I_filt, label="I компонент")
+plt.plot(t, Q_filt, label="Q компонент")
 plt.title("I и Q компоненты")
 plt.xlabel("Время (с)")
 plt.ylabel("Амплитуда")
