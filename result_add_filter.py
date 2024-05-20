@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import butter, lfilter
 
 # Загрузка данных из файлов
 with open(
@@ -18,26 +19,69 @@ bit_length = 250
 
 
 # Функция для демодуляции BPSK сигнала с использованием схемы Костаса
-def demodulate_bpsk(signal, tuning_sequence, bit_length):
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype="low", analog=False)
+    return b, a
+
+
+def lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+
+def costas_loop(signal, Kp, Ki):
+    N = len(signal)
+    phase_error = np.zeros(N)
+    integrator = np.zeros(N)
+    phase_est = np.zeros(N)
+    freq_est = np.zeros(N)
+    phase = 0
+    freq = 0
+
+    for i in range(1, N):
+        integrator[i] = integrator[i - 1] + phase_error[i - 1]
+        phase_est[i] = (
+            phase_est[i - 1] + freq + Kp * phase_error[i] + Ki * integrator[i]
+        )
+        phase = np.mod(phase_est[i], 2 * np.pi)
+        freq_est[i] = freq
+        I = signal[i] * np.cos(phase)
+        Q = signal[i] * np.sin(phase)
+        phase_error[i] = I * Q
+
+        freq += Kp * phase_error[i]
+
+    return phase_est
+
+
+def demodulate_bpsk(signal, bit_length):
     signal_length = len(signal)
     num_bits = signal_length // bit_length
 
     # Разбиение сигнала на отдельные биты
     bits = np.zeros(num_bits, dtype=int)
+    Kp = 0.1
+    Ki = 0.01
+    sampling_freq = 1  # Assuming normalized frequency
+    phase_est = costas_loop(signal, Kp, Ki)
+
     for i in range(num_bits):
         bit_signal = signal[i * bit_length : (i + 1) * bit_length]
-        # Комплексный сигнал настройки
-        tuning_signal = np.exp(-1j * np.pi * 2 * tuning_sequence.repeat(bit_length))
         # Демодуляция Костаса
-        I = np.real(bit_signal * np.conj(tuning_signal))
-        Q = np.imag(bit_signal * np.conj(tuning_signal))
-        bits[i] = int(np.mean(I) < 0)
+        I = bit_signal * np.cos(phase_est[i * bit_length : (i + 1) * bit_length])
+        Q = bit_signal * np.sin(phase_est[i * bit_length : (i + 1) * bit_length])
+        I_filtered = lowpass_filter(I, 0.1, sampling_freq)
+        bits[i] = int(np.mean(I_filtered) < 0)
+    bits = 1 - bits
 
     return bits
 
 
 # Демодуляция BPSK сигнала
-recovered_bits = demodulate_bpsk(bpsk_signal[:, 1], tuning_sequence, bit_length)
+recovered_bits = demodulate_bpsk(bpsk_signal[:, 1], bit_length)
 
 data_package = np.loadtxt(
     "D:/Python_project/1_2_MAGA/Digital electronics modulator/data_package.txt",
