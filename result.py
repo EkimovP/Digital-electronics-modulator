@@ -1,104 +1,63 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import butter, lfilter
 
+# Загрузка данных из файлов
+with open(
+    "D:/Python_project/1_2_MAGA/Digital electronics modulator/data.txt", "r"
+) as file:
+    tuning_sequence_str = file.read().splitlines()[0]
 
-# Функция для загрузки данных из файлов
-def load_data(filename):
-    return np.loadtxt(filename)
+tuning_sequence = np.array([int(bit) for bit in tuning_sequence_str.split()])
 
-
-# Функции для фильтрации
-def butter_lowpass(cutoff, fs, order=5):
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype="low", analog=False)
-    return b, a
-
-
-def lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-# Загрузка данных
-training_sequence = load_data(
-    "D:/Python_project/1_2_MAGA/Digital electronics modulator/data_package.txt"
-)
-bpsk_signal_data = load_data(
+bpsk_signal = np.loadtxt(
     "D:/Python_project/1_2_MAGA/Digital electronics modulator/bpsk_signal.txt"
 )
 
-# Извлечение оси времени и BPSK сигнала
-t = bpsk_signal_data[:, 0]
-bpsk_signal = bpsk_signal_data[:, 1]
+# Длина одного бита в отсчётах
+bit_length = 250
 
-# Параметры сигнала
-fs = 1 / (t[1] - t[0])  # Частота дискретизации
-Tb = len(t) / fs  # Длительность одного бита (оценка)
-f0 = 10  # Частота несущей (примерная)
-cutoff = f0 / 2  # Частота среза фильтра
 
-# Демодуляция BPSK сигнала с использованием схемы Костаса
-I = np.cos(2 * np.pi * f0 * t) * bpsk_signal
-Q = np.sin(2 * np.pi * f0 * t) * bpsk_signal
+# Функция для демодуляции BPSK сигнала с использованием схемы Костаса
+def demodulate_bpsk(signal, tuning_sequence, bit_length):
+    signal_length = len(signal)
+    num_bits = signal_length // bit_length
 
-# Фильтрация I и Q компонентов
-I_filt = lowpass_filter(I, cutoff, fs)
-Q_filt = lowpass_filter(Q, cutoff, fs)
+    # Разбиение сигнала на отдельные биты
+    bits = np.zeros(num_bits, dtype=int)
+    for i in range(num_bits):
+        bit_signal = signal[i * bit_length : (i + 1) * bit_length]
+        # Комплексный сигнал настройки
+        tuning_signal = np.exp(-1j * np.pi * 2 * tuning_sequence.repeat(bit_length))
+        # Демодуляция Костаса
+        I = np.real(bit_signal * np.conj(tuning_signal))
+        Q = np.imag(bit_signal * np.conj(tuning_signal))
+        bits[i] = int(np.mean(I) < 0)
 
-# Фазовая ошибка
-phase_error = np.arctan2(Q_filt, I_filt)
+    return bits
 
-# Коррекция фазы
-corrected_signal = np.cos(2 * np.pi * f0 * t + phase_error)
 
-# Восстановление битовой последовательности
-recovered_bits = corrected_signal > 0
+# Демодуляция BPSK сигнала
+recovered_bits = demodulate_bpsk(bpsk_signal[:, 1], tuning_sequence, bit_length)
 
-# Преобразование recovered_bits в 0 и 1
-recovered_bits = recovered_bits.astype(int)
+# Визуализация
+plt.figure(figsize=(10, 5))
 
-# Сохранение битовой последовательности в файл
-np.savetxt(
-    "D:/Python_project/1_2_MAGA/Digital electronics modulator/recovered_bits.txt",
-    recovered_bits,
-    fmt="%d",
-)
-
-# Графики
-plt.figure(figsize=(12, 12))
-
-# Исходный BPSK сигнал
-plt.subplot(4, 1, 1)
-plt.plot(t, bpsk_signal)
-plt.title("BPSK сигнал")
-plt.xlabel("Время (с)")
-plt.ylabel("Амплитуда")
-
-# I и Q компоненты
-plt.subplot(4, 1, 2)
-plt.plot(t, I_filt, label="I компонент")
-plt.plot(t, Q_filt, label="Q компонент")
-plt.title("I и Q компоненты")
-plt.xlabel("Время (с)")
-plt.ylabel("Амплитуда")
-plt.legend()
-
-# Корректированный сигнал
-plt.subplot(4, 1, 3)
-plt.plot(t, corrected_signal)
-plt.title("Корректированный сигнал")
-plt.xlabel("Время (с)")
+# Исходный сигнал
+plt.subplot(2, 1, 1)
+plt.plot(bpsk_signal[:, 0], bpsk_signal[:, 1])
+plt.title("Исходный BPSK сигнал")
+plt.xlabel("Время")
 plt.ylabel("Амплитуда")
 
 # Восстановленная битовая последовательность
-plt.subplot(4, 1, 4)
-plt.step(np.arange(len(recovered_bits)), recovered_bits, where="mid")
+plt.subplot(2, 1, 2)
+plt.stem(recovered_bits, use_line_collection=True)
 plt.title("Восстановленная битовая последовательность")
-plt.xlabel("Номер бита")
+plt.xlabel("Отсчёт")
 plt.ylabel("Значение бита")
 
 plt.tight_layout()
 plt.show()
+
+print(recovered_bits)
+print(len(recovered_bits))
