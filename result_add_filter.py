@@ -108,24 +108,44 @@ else:
     total_bits = len(data_package)
     accuracy = correct_bits / total_bits * 100
     print(f"Точность: {accuracy:.2f}%")
+# ПСП (псевдослучайная последовательность)
+psp = np.array([0, 0, 1, 0, 1, 1, 1])
+# Корреляция восстановленной битовой последовательности с ПСП
+psp_length = len(psp)
+correlation = np.correlate(recovered_bits, psp, mode="valid")
+start_index = np.argmax(correlation)
+# Извлечение информационных бит
+informational_bits = recovered_bits[
+    start_index + psp_length : start_index + psp_length + len(data_package) - psp_length
+]
 # Вывод восстановленной битовой последовательности и ее длины
 print(recovered_bits)
 print(len(recovered_bits))
+# Вывод информационных битов и их длины
+print("Информационные биты:", informational_bits)
+print("Длина информационных битов:", len(informational_bits))
 
 # Визуализация
 plt.figure(figsize=(10, 5))
 
 # Исходный сигнал
-plt.subplot(2, 1, 1)
+plt.subplot(3, 1, 1)
 plt.plot(bpsk_signal[:, 0], bpsk_signal[:, 1])
 plt.title("Исходный BPSK сигнал")
 plt.xlabel("Время")
 plt.ylabel("Амплитуда")
 
 # Восстановленная битовая последовательность
-plt.subplot(2, 1, 2)
+plt.subplot(3, 1, 2)
 plt.stem(recovered_bits, use_line_collection=True)
 plt.title("Восстановленная битовая последовательность")
+plt.xlabel("Отсчёт")
+plt.ylabel("Значение бита")
+
+# Информационные биты
+plt.subplot(3, 1, 3)
+plt.stem(informational_bits, use_line_collection=True)
+plt.title("Информационные биты")
 plt.xlabel("Отсчёт")
 plt.ylabel("Значение бита")
 
