@@ -2,41 +2,36 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter
 
+# Загрузка данных из файлов
 # with open(
 #     "D:/Python_project/1_2_MAGA/Digital electronics modulator/data.txt", "r"
 # ) as file:
 #     tuning_sequence_str = file.read().splitlines()[0]
 # tuning_sequence = np.array([int(bit) for bit in tuning_sequence_str.split()])
 
-# Загрузка исходных данных из файла (сигнала)
-bpsk_signal = np.loadtxt(
-    "D:/Python_project/1_2_MAGA/Digital electronics modulator/bpsk_signal_var2.txt"
+bpsk_signal_file = np.loadtxt(
+    "D:/Python_project/1_2_MAGA/Digital electronics modulator/quant_bpsk_signal_var2.txt"
 )
+# Нормализация квантованного сигнала от диапазона [-127, 127] к [-1, 1]
+bpsk_signal = bpsk_signal_file / 127.0
 # Длина одного бита в отсчётах
 bit_length = 250
 
 
-# Функция для создания фильтра нижних частот
+# Функция для демодуляции BPSK сигнала с использованием схемы Костаса
 def butter_lowpass(cutoff, fs, order=5):
-    # Частота Найквиста
     nyq = 0.5 * fs
-    # Нормализация: частота среза к частоте Найквиста
     normal_cutoff = cutoff / nyq
-    # order - порядок фильтра, btype="low" - фильтр нижних частот
     b, a = butter(order, normal_cutoff, btype="low", analog=False)
     return b, a
 
 
-# Функция для применения фильтра нижних частот к сигналу
 def lowpass_filter(data, cutoff, fs, order=5):
-    # Коэф для фильтра (определяют его характеристики)
     b, a = butter_lowpass(cutoff, fs, order=order)
-    # Линейная фильтрация данных с использованием разностного уравнения. Выход: последовательность
     y = lfilter(b, a, data)
     return y
 
 
-# Реализация схемы Костаса для демодуляции исходного сигнала
 def costas_loop(signal, Kp, Ki):
     N = len(signal)
     phase_error = np.zeros(N)
@@ -47,46 +42,36 @@ def costas_loop(signal, Kp, Ki):
     freq = 0
 
     for i in range(1, N):
-        # Интегратор (накапливает ошибку фазы)
         integrator[i] = integrator[i - 1] + phase_error[i - 1]
-        # Оценка фазы
         phase_est[i] = (
             phase_est[i - 1] + freq + Kp * phase_error[i] + Ki * integrator[i]
         )
-        # Текущая фаза (остаток от деления на 2pi)
         phase = np.mod(phase_est[i], 2 * np.pi)
-        # Текущая оценка частоты
         freq_est[i] = freq
-        # Квадратурная компонента
         I = signal[i] * np.cos(phase)
-        # Фазовая компонента
         Q = signal[i] * np.sin(phase)
-        # Ошибка фазы на текущем шаге
         phase_error[i] = I * Q
-        # Оценка частоты
         freq += Kp * phase_error[i]
 
     return phase_est
 
 
-# Демодуляция
 def demodulate_bpsk(signal, bit_length):
     signal_length = len(signal)
     num_bits = signal_length // bit_length
     # Разбиение сигнала на отдельные биты
     bits = np.zeros(num_bits, dtype=int)
-    # Коэф-ты усиления пропорциональной и интегральной обратной связи
     Kp = 0.1
     Ki = 0.01
-    sampling_freq = 1
+    sampling_freq = 1  # Assuming normalized frequency
     phase_est = costas_loop(signal, Kp, Ki)
 
     for i in range(num_bits):
         bit_signal = signal[i * bit_length : (i + 1) * bit_length]
+        # Демодуляция Костаса
         I = bit_signal * np.cos(phase_est[i * bit_length : (i + 1) * bit_length])
         Q = bit_signal * np.sin(phase_est[i * bit_length : (i + 1) * bit_length])
         I_filtered = lowpass_filter(I, 0.1, sampling_freq)
-        # Определение бита по среднему значению
         bits[i] = int(np.mean(I_filtered) < 0)
     bits = 1 - bits
 
@@ -118,7 +103,7 @@ plt.figure(figsize=(10, 5))
 # Исходный сигнал
 plt.subplot(2, 1, 1)
 plt.plot(bpsk_signal[:, 0], bpsk_signal[:, 1])
-plt.title("Исходный BPSK сигнал")
+plt.title("BPSK сигнал")
 plt.xlabel("Время")
 plt.ylabel("Амплитуда")
 
